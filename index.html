@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -5746,6 +5746,18 @@ filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
     cursor: pointer;
 }
 
+.forum-follow-btn.is-following {
+    background-color: #eff3f4;
+    color: #536471;
+    border: 1px solid #d0d7de;
+}
+
+.forum-follow-btn.is-unfollowed {
+    background-color: #0F1419;
+    color: #ffffff;
+    border: 1px solid #0F1419;
+}
+
 
 
 .forum-timeline-container {
@@ -6199,9 +6211,16 @@ filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
 }
 
 
-.wechat-dark-mode #forumDetailView .forum-follow-btn {
+.wechat-dark-mode #forumDetailView .forum-follow-btn.is-following {
+    background-color: #2f3336;
+    color: #e7e9ea;
+    border-color: #555;
+}
+
+.wechat-dark-mode #forumDetailView .forum-follow-btn.is-unfollowed {
     background-color: #ffffff;
     color: #0F1419;
+    border-color: #ffffff;
 }
 
 #marsModeScreen {
@@ -6444,27 +6463,40 @@ filter: drop-shadow(0 4px 6px rgba(0,0,0,0.25));
 
 
 .static-followed-icon {
-   
     padding: 8px 16px;
     font-size: 14px;
     font-weight: 600;
-    border-radius: 9999px; 
-    transform: translateY(15px); 
+    border-radius: 9999px;
+    transform: translateY(15px);
     display: flex;
     align-items: center;
-    gap: 6px; 
-
-    
-    background-color: transparent;
-    color: #0F1419; 
+    gap: 6px;
     border: 1px solid #ccc;
+    cursor: pointer;
 }
 
+.static-followed-icon.is-following {
+    background-color: #eff3f4;
+    color: #536471;
+    border-color: #d0d7de;
+}
 
-.wechat-dark-mode .static-followed-icon {
-     background-color: transparent;
-     color: white;
+.static-followed-icon.is-unfollowed {
+    background-color: #0F1419;
+    color: #ffffff;
+    border-color: #0F1419;
+}
+
+.wechat-dark-mode .static-followed-icon.is-following {
+     background-color: #2f3336;
+     color: #e7e9ea;
      border-color: #555;
+}
+
+.wechat-dark-mode .static-followed-icon.is-unfollowed {
+     background-color: #ffffff;
+     color: #0F1419;
+     border-color: #ffffff;
 }
 
 .home-screen {
@@ -35029,6 +35061,7 @@ const newGroup = {
                 return 0;
             });
             
+            const friendListFragment = document.createDocumentFragment();
             sortedFriends.forEach(friend => {
                 const item = document.createElement('div');
                 item.className = 'friend-item' + (friend.pinned ? ' pinned' : '');
@@ -35068,8 +35101,9 @@ const newGroup = {
     </div>
     ${unreadBadgeHtml} 
 `;
-list.appendChild(item);
+friendListFragment.appendChild(item);
 });
+list.appendChild(friendListFragment);
         }
 
         function switchWechatTab(tab) {
@@ -39536,6 +39570,13 @@ function applyCustomIcons() {
             if (interval > 1) return Math.floor(interval) + " 分钟前";
             return "刚刚";
         }
+
+        function ensureForumCommentTimestamp(comment) {
+            if (comment && !comment.timestamp) {
+                comment.timestamp = new Date().toISOString();
+            }
+            return comment;
+        }
         
                        
 
@@ -39561,6 +39602,8 @@ function applyCustomIcons() {
          }
     }
 }
+
+        const MOMENTS_RENDER_LIMIT = 80;
 
         function updateMomentsList() {
     const container = document.getElementById('momentsList');
@@ -39589,7 +39632,9 @@ function applyCustomIcons() {
     coverDiv.appendChild(userDiv);
     container.appendChild(coverDiv);
    
-    moments.forEach(moment => {
+    const momentsFragment = document.createDocumentFragment();
+    const visibleMoments = moments.slice(0, MOMENTS_RENDER_LIMIT);
+    visibleMoments.forEach(moment => {
   
         const author = getAuthorById(moment.authorId); // 朋友圈作者
         if (!author) return;
@@ -39750,8 +39795,15 @@ commentsHtml += `
         `;
         // --- 朋友圈底部操作区结束 ---
         
-        container.appendChild(item);
+        momentsFragment.appendChild(item);
     });
+    container.appendChild(momentsFragment);
+    if (moments.length > MOMENTS_RENDER_LIMIT) {
+        const notice = document.createElement('div');
+        notice.style.cssText = 'text-align:center; padding:16px; color:#999; font-size:13px;';
+        notice.textContent = `为保持流畅，已先显示最新 ${MOMENTS_RENDER_LIMIT} 条朋友圈。`;
+        container.appendChild(notice);
+    }
 }
         
         function toggleActionsMenu(event, momentId) {
@@ -47834,20 +47886,42 @@ async function deleteDiary(event, diaryId, authorId) {
     });
 }
 
-function renderForumTimeline() {
-    const container = document.getElementById('recommendedTimeline');
+const FORUM_RENDER_LIMIT = 80;
+
+function getVisibleForumPosts(posts) {
+    return (posts || []).slice(0, FORUM_RENDER_LIMIT);
+}
+
+function appendForumLimitNotice(container, totalCount) {
+    if (totalCount > FORUM_RENDER_LIMIT) {
+        const notice = document.createElement('div');
+        notice.style.cssText = 'text-align:center; padding:16px; color:var(--text-secondary); font-size:13px;';
+        notice.textContent = `为保持流畅，已先显示最新 ${FORUM_RENDER_LIMIT} 条，刷新后可查看最新内容。`;
+        container.appendChild(notice);
+    }
+}
+
+function renderForumPostList(container, posts, emptyHtml) {
     container.innerHTML = '';
-    
-    if (!currentForumPosts || currentForumPosts.length === 0) {
-        container.innerHTML = '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无帖子，点击右上角刷新按钮生成</div>';
+    if (!posts || posts.length === 0) {
+        container.innerHTML = emptyHtml;
         return;
     }
-
-    // 修改点：直接调用 createPostElement 统一生成帖子，不再手写 HTML
-    currentForumPosts.forEach(post => {
-        const item = createPostElement(post);
-        container.appendChild(item);
+    const fragment = document.createDocumentFragment();
+    getVisibleForumPosts(posts).forEach(post => {
+        fragment.appendChild(createPostElement(post));
     });
+    container.appendChild(fragment);
+    appendForumLimitNotice(container, posts.length);
+}
+
+function renderForumTimeline() {
+    const container = document.getElementById('recommendedTimeline');
+    renderForumPostList(
+        container,
+        currentForumPosts,
+        '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无帖子，点击右上角刷新按钮生成</div>'
+    );
 }
 
 /**
@@ -48245,7 +48319,7 @@ profileTabs.forEach(tab => {
     }
 
     // (下面的代码保持不变)
-    document.getElementById('forumProfileFollowing').textContent = forumProfileData.following;
+    document.getElementById('forumProfileFollowing').textContent = (forumSettings.activeAiIds || []).length;
     document.getElementById('forumProfileFollowers').textContent = forumProfileData.followers;
     document.getElementById('forumProfileJoined').innerHTML = `📅 ${forumProfileData.joined} 加入`;
 
@@ -48976,8 +49050,7 @@ async function refreshForumTimeline() {
             const now = new Date();
             // 使用解析后的 postsData 来创建帖子
             currentForumPosts = postsData.map((p, i) => {
-                const randomMinutesAgo = (i * 15) + Math.floor(Math.random() * 60);
-                const postDate = new Date(now.getTime() - randomMinutesAgo * 60 * 1000);
+                const postDate = new Date();
                 const authorIsAiFriend = aiParticipants.find(ai => ai.name === p.authorName);
                 
                 const newPost = {
@@ -49334,6 +49407,12 @@ function renderForumDetailView(post) {
             </div>
         `;
     }
+
+    const canFollowAuthor = post.authorId && post.authorId !== userProfile.id && friends.some(f => f.id === post.authorId);
+    const isFollowingAuthor = canFollowAuthor && (forumSettings.activeAiIds || []).includes(post.authorId);
+    const detailFollowButtonHtml = canFollowAuthor
+        ? `<button class="forum-follow-btn ${isFollowingAuthor ? 'is-following' : 'is-unfollowed'}" onclick="toggleForumCharacterFollow(event, '${post.authorId}')">${isFollowingAuthor ? '已关注' : '关注'}</button>`
+        : '';
     // -------------------------
     const mainPostHtml = `
         <div class="forum-detail-main-post">
@@ -49345,7 +49424,7 @@ function renderForumDetailView(post) {
                         <span class="post-handle">@${postAuthor.name.replace(/\s+/g, '')}</span>
                     </div>
                 </div>
-                <button class="forum-follow-btn">关注</button>
+                ${detailFollowButtonHtml}
             </div>
             <div class="post-text" style="font-size: 15px; line-height: 1.5; margin: 15px 0; white-space: pre-wrap; word-wrap: break-word;">${post.content.trim().replace(/\n/g, '<br>')}</div>
            ${detailImageHtml}
@@ -49362,6 +49441,7 @@ function renderForumDetailView(post) {
 if (post.comments && post.comments.length > 0) {
     // **状态一：评论已加载完毕**，正常渲染所有评论
     commentsHtml = post.comments.map(comment => {
+        const commentTimeAgo = comment.timestamp ? timeSince(comment.timestamp) : '刚刚';
         
         // --- 准备变量 ---
 let cId = '';
@@ -49426,7 +49506,7 @@ if (isAnonymous) {
                     <div class="comment-content-container">
                         <div class="post-header">
                             <span class="post-author-name">${comment.authorName}</span>
-                            <span class="post-handle">@${comment.authorName.replace(/\s+/g, '')} · 18小时</span>
+                            <span class="post-handle">@${comment.authorName.replace(/\s+/g, '')} · ${commentTimeAgo}</span>
                             <span class="post-more-btn" style="margin-left: auto;">...</span>
                         </div>
                         <div class="post-text">${comment.content}</div>
@@ -49603,7 +49683,7 @@ function openForumSideMenu() {
     document.getElementById('forumMenuAvatar').style.backgroundImage = `url('${avatarSrc}')`;
     document.getElementById('forumMenuName').textContent = forumProfileData.name;
     document.getElementById('forumMenuHandle').textContent = forumProfileData.handle;
-    document.getElementById('forumMenuFollowing').textContent = forumProfileData.following;
+    document.getElementById('forumMenuFollowing').textContent = (forumSettings.activeAiIds || []).length;
     document.getElementById('forumMenuFollowers').textContent = forumProfileData.followers;
 
     // --- 2. 回显开关状态 (关键修复) ---
@@ -50513,17 +50593,11 @@ function switchForumSubTab(tabName, tabElement) {
 // --- ↓↓↓ 用这个新版本替换旧的 renderGossipTimeline ↓↓↓ ---
 function renderGossipTimeline() {
     const container = document.getElementById('gossipTimeline');
-    container.innerHTML = ''; // 清空
-
-    if (currentGossipPosts.length > 0) {
-        currentGossipPosts.forEach(post => {
-            const item = createPostElement(post);
-            container.appendChild(item);
-        });
-    } else {
-        // 只有在真的没内容时才显示提示
-        container.innerHTML = '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无八卦，点击右上角刷新按钮生成。</div>';
-    }
+    renderForumPostList(
+        container,
+        currentGossipPosts,
+        '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无八卦，点击右上角刷新按钮生成。</div>'
+    );
 }
 
 // --- ↓↓↓ 请用这个【JSON升级版】，完整替换旧的 generateGossipPosts 函数 ↓↓↓ ---
@@ -50662,8 +50736,7 @@ const prompt = `
         const now = new Date();
         const posts = postsData.map((p, i) => {
             if (p.content && p.authorName) {
-                const randomMinutesAgo = (i * 15) + Math.floor(Math.random() * 60);
-                const postDate = new Date(now.getTime() - randomMinutesAgo * 60 * 1000);
+                const postDate = new Date();
                 return {
                     id: `gossip_${generateUniqueId()}`,
                     content: p.content,
@@ -50881,8 +50954,7 @@ const prompt = `
         const posts = postsData.map((p, i) => {
             const author = aiParticipants.find(ai => ai.name === p.authorName);
             if (p.content && author) {
-                const randomMinutesAgo = (i * 15) + Math.floor(Math.random() * 60);
-                const postDate = new Date(now.getTime() - randomMinutesAgo * 60 * 1000);
+                const postDate = new Date();
                 return {
                     id: `following_${generateUniqueId()}`,
                     content: p.content,
@@ -50910,18 +50982,11 @@ const prompt = `
  */
 function renderFollowingTimeline() {
     const container = document.getElementById('followingTimeline');
-    container.innerHTML = ''; // 清空旧内容
-
-    if (currentFollowingPosts.length > 0) {
-        currentFollowingPosts.forEach(post => {
-            // 我们复用已有的 createPostElement 函数来创建每个帖子的HTML
-            const item = createPostElement(post);
-            container.appendChild(item);
-        });
-    } else {
-        // 如果没有内容，显示提示信息
-        container.innerHTML = '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无关注动态，请确保已在论坛设置中选择AI角色并刷新。</div>';
-    }
+    renderForumPostList(
+        container,
+        currentFollowingPosts,
+        '<div style="text-align: center; padding: 50px; color: var(--text-secondary);">暂无关注动态，请确保已在论坛设置中选择AI角色并刷新。</div>'
+    );
 }
 
 // ▼▼▼ 将以下所有新函数粘贴到 <script> 的末尾 ▼▼▼
@@ -51410,6 +51475,7 @@ async function postForumReply() {
     const newComment = {
         authorName: isForumAnonymous ? '匿名用户' : forumProfileData.name, 
         content: finalContent,
+        timestamp: new Date().toISOString(),
         replyingTo: currentReplyingTo.authorName ? { name: currentReplyingTo.authorName } : null
     };
 
@@ -51417,7 +51483,7 @@ async function postForumReply() {
         post.comments = [];
     }
     
-    post.comments.push(newComment);
+    post.comments.push(ensureForumCommentTimestamp(newComment));
     await saveData();
     
     renderForumDetailView(post); // 立即刷新UI显示用户的评论
@@ -51604,7 +51670,7 @@ commentsData.forEach(comment => {
         comment.authorAvatarUrl = passerbyAvatarUrls[Math.floor(Math.random() * passerbyAvatarUrls.length)];
     }
 
-    post.comments.push(comment);
+    post.comments.push(ensureForumCommentTimestamp(comment));
 });
 
         
@@ -51612,7 +51678,7 @@ commentsData.forEach(comment => {
 
     } catch (error) {
         console.error("AI生成回复失败:", error);
-        post.comments.push({ authorName: "系统", content: `[AI回复生成失败: ${error.message}]` });
+        post.comments.push({ authorName: "系统", content: `[AI回复生成失败: ${error.message}]`, timestamp: new Date().toISOString() });
     } finally {
         renderForumDetailView(post);
     }
@@ -51807,7 +51873,7 @@ async function triggerAiPostReactions(postId) {
             }
             // --- 【【【修复结束】】】 ---
 
-            post.comments.push(comment);
+            post.comments.push(ensureForumCommentTimestamp(comment));
         });
         // ▲▲▲ 替换到此结束 ▲▲▲
 
@@ -51822,7 +51888,7 @@ async function triggerAiPostReactions(postId) {
     } catch (error) {
         console.error("AI生成帖子评论失败:", error);
         // 即使失败，也最好通知用户
-        post.comments.push({ authorName: "系统", content: `[AI评论生成失败: ${error.message}]` });
+        post.comments.push({ authorName: "系统", content: `[AI评论生成失败: ${error.message}]`, timestamp: new Date().toISOString() });
         if (document.getElementById('forumDetailView').classList.contains('active')) {
              renderForumDetailView(post);
         }
@@ -52011,9 +52077,15 @@ function compressImage(source, options = {}) {
  * @param {string} dataUrl - Base64格式的图片数据
  * @returns {string} - 临时的 blob: URL
  */
+const dataUrlBlobCache = new Map();
+const DATA_URL_BLOB_CACHE_LIMIT = 120;
+
 function dataUrlToBlobUrl(dataUrl) {
     if (!dataUrl || !dataUrl.startsWith('data:')) {
         return dataUrl; // 如果不是dataURL，直接返回原值 (例如 http链接)
+    }
+    if (dataUrlBlobCache.has(dataUrl)) {
+        return dataUrlBlobCache.get(dataUrl);
     }
     try {
         const arr = dataUrl.split(',');
@@ -52025,7 +52097,14 @@ function dataUrlToBlobUrl(dataUrl) {
             u8arr[n] = bstr.charCodeAt(n);
         }
         const blob = new Blob([u8arr], { type: mime });
-        return URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(blob);
+        dataUrlBlobCache.set(dataUrl, blobUrl);
+        if (dataUrlBlobCache.size > DATA_URL_BLOB_CACHE_LIMIT) {
+            const oldestKey = dataUrlBlobCache.keys().next().value;
+            URL.revokeObjectURL(dataUrlBlobCache.get(oldestKey));
+            dataUrlBlobCache.delete(oldestKey);
+        }
+        return blobUrl;
     } catch (error) {
         console.error("DataURL to Blob URL conversion failed:", error);
         return dataUrl; // 转换失败则返回原始dataURL作为备用
@@ -52131,7 +52210,7 @@ async function triggerAnonymousReactions(postId) {
             if (!authorIsAiFriend) {
                 comment.authorAvatarUrl = passerbyAvatarUrls[Math.floor(Math.random() * passerbyAvatarUrls.length)];
             }
-            post.comments.push(comment);
+            post.comments.push(ensureForumCommentTimestamp(comment));
         });
 
         await saveData();
@@ -52143,7 +52222,7 @@ async function triggerAnonymousReactions(postId) {
 
     } catch (error) {
         console.error("AI生成匿名帖子评论失败:", error);
-        post.comments.push({ authorName: "系统", content: `[AI评论生成失败: ${error.message}]` });
+        post.comments.push({ authorName: "系统", content: `[AI评论生成失败: ${error.message}]`, timestamp: new Date().toISOString() });
         if (document.getElementById('forumDetailView').classList.contains('active')) {
              renderForumDetailView(post);
         }
@@ -52259,13 +52338,13 @@ ${specialInstructionsForAI || ''}
             if (!friends.some(f => f.name === comment.authorName)) {
                 comment.authorAvatarUrl = passerbyAvatarUrls[Math.floor(Math.random() * passerbyAvatarUrls.length)];
             }
-            post.comments.push(comment);
+            post.comments.push(ensureForumCommentTimestamp(comment));
         });
         
         await saveData();
     } catch (error) {
         console.error("AI生成匿名回复失败:", error);
-        post.comments.push({ authorName: "系统", content: `[AI回复生成失败: ${error.message}]` });
+        post.comments.push({ authorName: "系统", content: `[AI回复生成失败: ${error.message}]`, timestamp: new Date().toISOString() });
     } finally {
         renderForumDetailView(post);
     }
@@ -53388,16 +53467,42 @@ if (topActionsContainer) {
     // 先移除可能存在的旧按钮，防止重复添加
     const oldBtn = topActionsContainer.querySelector('.static-followed-icon');
     if (oldBtn) oldBtn.remove();
-    
-    // 创建并添加新的静态图标
-    // 这是修改后的代码
-const iconHtml = `
-    <span class="static-followed-icon">
-        已关注
-    </span>`;
+
+    const activeAiIds = forumSettings.activeAiIds || [];
+    const isFollowing = activeAiIds.includes(character.id);
+    const followClass = isFollowing ? 'is-following' : 'is-unfollowed';
+    const followText = isFollowing ? '已关注' : '关注';
+    const iconHtml = `
+    <button class="static-followed-icon ${followClass}" onclick="toggleForumCharacterFollow(event, '${character.id}')">
+        ${followText}
+    </button>`;
     topActionsContainer.insertAdjacentHTML('beforeend', iconHtml);
 }
 // ▲▲▲ 添加结束 ▲▲▲
+}
+
+async function toggleForumCharacterFollow(event, characterId) {
+    if (event) event.stopPropagation();
+    if (!forumSettings.activeAiIds) forumSettings.activeAiIds = [];
+
+    const index = forumSettings.activeAiIds.indexOf(characterId);
+    if (index > -1) {
+        forumSettings.activeAiIds.splice(index, 1);
+    } else {
+        forumSettings.activeAiIds.push(characterId);
+    }
+
+    await saveData();
+
+    const character = friends.find(f => f.id === characterId) || (tempNpcData && tempNpcData.id === characterId ? tempNpcData : null);
+    if (character) {
+        renderForumCharacterProfile(character, character.profileContentCache || null);
+    }
+    const followingCount = (forumSettings.activeAiIds || []).length;
+    const profileFollowing = document.getElementById('forumProfileFollowing');
+    if (profileFollowing) profileFollowing.textContent = followingCount;
+    const menuFollowing = document.getElementById('forumMenuFollowing');
+    if (menuFollowing) menuFollowing.textContent = followingCount;
 }
 
 // ▼▼▼ 新增代码 ▼▼▼
@@ -56307,8 +56412,7 @@ async function doujinGenerateCommentsForPost(postId, chapterIndex = null) {
         if (Array.isArray(commentsData)) {
             const now = new Date();
             const commentsWithTimestamp = commentsData.map((comment, index) => {
-                const randomMinutesAgo = (index * 5) + Math.floor(Math.random() * 60);
-                const postDate = new Date(now.getTime() - randomMinutesAgo * 60 * 1000);
+                        const postDate = new Date();
                 
                 return {
                     ...comment,
