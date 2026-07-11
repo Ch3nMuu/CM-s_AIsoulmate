@@ -1,0 +1,41 @@
+[
+  {
+    "id": "V_001",
+    "name": "V",
+    "visualFolder": "V_001",
+    "referenceImages": [
+      "reference/V_body_01.jpg",
+      "reference/V_body_02.png",
+      "reference/V_body_03.jpg",
+      "reference/V_body_04.jpg",
+      "reference/V_face_01.png",
+      "reference/V_face_02.png"
+    ]
+  },
+  {
+    "id": "枫丹_001",
+    "name": "枫丹",
+    "visualFolder": "枫丹_001",
+    "referenceImages": [
+      "reference/枫丹_face_01.JPG",
+      "reference/枫丹_fullbody_01.JPG"
+    ]
+  },
+  {
+    "id": "聂修文_001",
+    "name": "聂修文",
+    "visualFolder": "聂修文_001",
+    "referenceImages": [
+      "reference/聂修文_face_01.jpeg",
+      "reference/聂修文_fullbody_01.JPG"
+    ]
+  },
+  {
+    "id": "赭蠡_001",
+    "name": "赭蠡",
+    "visualFolder": "赭蠡_001",
+    "referenceImages": [
+      "reference/赭蠡_face_01.JPG"
+    ]
+  }
+]

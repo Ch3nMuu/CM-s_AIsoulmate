@@ -1,7 +1,7 @@
 (function () {
     'use strict';
 
-    const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:180000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
+    const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const activeRequests = new Map();
     let cachedSettings = null;
@@ -26,9 +26,54 @@
     function parseJson(text,label){if(!String(text||'').trim())return{};try{return JSON.parse(text);}catch(_){throw new Error(`${label} JSON 格式错误`);}}
     function buildHeaders(s){const h={'Content-Type':'application/json',...parseJson(s.extraHeadersJson,'额外请求头')};if(s.authType==='bearer'&&s.apiKey)h.Authorization=`Bearer ${s.apiKey}`;else if(s.authType==='x-api-key'&&s.apiKey)h['x-api-key']=s.apiKey;else if(s.authType==='custom'){if(!s.customAuthHeader)throw new Error('请填写自定义认证 Header');h[s.customAuthHeader]=`${s.customAuthPrefix||''}${s.apiKey||''}`;}return h;}
     function buildBody(s,prompt,overrides={}){if(!s.modelName)throw new Error('请填写生图模型名称');const extra=parseJson(s.extraBodyJson,'额外请求体');const body={...extra,model:s.modelName,prompt,n:1,size:s.size,...overrides};body.prompt=prompt;body.n=1;if(!s.sendQuality)delete body.quality;else body.quality=overrides.quality||s.quality;if(!s.sendOutputFormat)delete body.output_format;else body.output_format=s.outputFormat;return body;}
-    function extractGeneratedImage(data){const candidates=[data?.data?.[0]?.b64_json,data?.data?.[0]?.url,data?.data?.[0]?.image,data?.image,data?.imageUrl,data?.image_url,data?.imageBase64,data?.image_base64,data?.b64_json,data?.output?.[0]?.url,data?.result?.url,data?.result?.image,data?.images?.[0]?.url,data?.images?.[0]];let value=candidates.find(v=>typeof v==='string'&&v.trim());if(!value&&typeof data==='string'){const md=data.match(/!\[[^\]]*\]\((https?:\/\/[^)]+)\)/i);const url=data.match(/https?:\/\/[^\s"'<>]+/i);value=md?.[1]||url?.[0]||(data.startsWith('data:image/')?data:null);}if(!value)throw new Error('接口返回中没有找到图片');if(value.startsWith('data:image/')||/^https?:\/\//i.test(value))return value;return `data:image/png;base64,${value}`;}
+    function extractGeneratedImage(data){const candidates=[data?.data?.[0]?.b64_json,data?.data?.[0]?.base64,data?.data?.[0]?.url,data?.data?.[0]?.image,data?.image,data?.imageUrl,data?.image_url,data?.base64,data?.imageBase64,data?.image_base64,data?.b64_json,data?.output?.[0]?.url,data?.result?.url,data?.result?.image,data?.images?.[0]?.url,data?.images?.[0]];let value=candidates.find(v=>typeof v==='string'&&v.trim());if(!value&&typeof data==='string'){const md=data.match(/!\[[^\]]*\]\((https?:\/\/[^)]+)\)/i);const url=data.match(/https?:\/\/[^\s"'<>]+/i);value=md?.[1]||url?.[0]||(data.startsWith('data:image/')?data:null);}if(!value)throw new Error('接口返回中没有找到图片');if(value.startsWith('data:image/')||/^https?:\/\//i.test(value))return value;return `data:image/png;base64,${value}`;}
     function normalizeImageApiError(error){if(error?.name==='AbortError')return new Error('生图请求超时');const text=String(error?.message||error||'生图失败').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').slice(0,240);if(/Failed to fetch|NetworkError/i.test(text))return new Error('无法连接生图接口，请检查地址、网络或 CORS 设置');return new Error(text);}
-    async function generateImage(prompt,settingsOverride=null){const s=normalizeSettings(settingsOverride||await getSettings());if(!s.enabled)throw new Error('生图服务未启用');if(!s.apiUrl)throw new Error('生图 API 地址为空');if(!s.apiKey&&s.authType!=='none')throw new Error('生图 API Key 为空');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(s.timeout)||180000));try{const res=await fetch(joinApiUrl(s.apiUrl,s.endpoint),{method:'POST',headers:buildHeaders(s),body:JSON.stringify(buildBody(s,prompt)),signal:controller.signal});const text=await res.text();if(!res.ok)throw new Error(`生图接口返回 ${res.status}: ${text.replace(/<[^>]*>/g,' ').slice(0,160)}`);let data;try{data=JSON.parse(text);}catch(_){data=text;}return extractGeneratedImage(data);}catch(e){throw normalizeImageApiError(e);}finally{clearTimeout(timer);}}
+    async function generateImage(prompt,settingsOverride=null,options={}){
+        const s=normalizeSettings(settingsOverride||await getSettings());
+        if(!s.enabled)throw new Error('生图服务未启用');
+        if(!s.apiUrl)throw new Error('生图 API 地址为空');
+        if(!s.apiKey&&s.authType!=='none')throw new Error('生图 API Key 为空');
+        if(!s.modelName)throw new Error('生图模型名称为空，请在生图 API 设置中确认模型名');
+
+        const url=joinApiUrl(s.apiUrl,s.endpoint);
+        const body=buildBody(s,prompt);
+        const referenceImages=Array.isArray(options.referenceImages)
+            ? options.referenceImages.slice(0,6)
+            : (options.character&&window.CharacterVisualMemory?.loadReferenceImages
+                ? await window.CharacterVisualMemory.loadReferenceImages(options.character,6)
+                : []);
+        if(referenceImages.length)body.reference_images=referenceImages;
+        const timeoutMs=Math.max(120000,Number(s.timeout)||120000);
+        const controller=new AbortController();
+        const timer=setTimeout(()=>controller.abort(),timeoutMs);
+
+        console.groupCollapsed('[JRSY Image API] request');
+        console.log('URL:',url);
+        console.log('model:',body.model);
+        console.log('body fields:',Object.keys(body));
+        console.log('body:',referenceImages.length?{...body,reference_images:`[${referenceImages.length} image data URLs]`}:body);
+        console.log('timeoutMs:',timeoutMs);
+        console.log('角色ID:',options.characterId||options.character?.id||'');
+        console.log('reference image count:',referenceImages.length);
+        console.log('request body keys:',Object.keys(body).join(','));
+        console.groupEnd();
+
+        try{
+            console.log('FINAL IMAGE REQUEST BODY',body);
+            const res=await fetch(url,{method:'POST',headers:buildHeaders(s),body:JSON.stringify(body),signal:controller.signal});
+            const text=await res.text();
+            console.groupCollapsed('[JRSY Image API] response');
+            console.log('status:',res.status);
+            console.log('response text:',text);
+            console.groupEnd();
+            if(!res.ok)throw new Error(`生图接口返回 ${res.status}: ${text.replace(/<[^>]*>/g,' ').slice(0,500)}`);
+            let data;try{data=JSON.parse(text);}catch(_){data=text;}
+            return extractGeneratedImage(data);
+        }catch(e){
+            console.error('[JRSY Image API] request failed:',e?.name,e?.message);
+            throw normalizeImageApiError(e);
+        }finally{clearTimeout(timer);}
+    }
     function buildCharacterImagePrompt(friend,scene){const p=friend?.imageProfile||{};return[p.appearancePrompt,scene,p.defaultClothingPrompt,p.photographyPrompt,p.negativePrompt?`Avoid: ${p.negativePrompt}`:''].filter(Boolean).join('\n');}
 
     async function persist(friendId){await dbManager.set('chatHistories',{friendId,messages:chatHistories[friendId]||[]});}
@@ -36,12 +81,33 @@
     async function createPlaceholderMessage({friendId,friend,action,requestId}){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220"><rect width="100%" height="100%" rx="18" fill="#eee"/><circle cx="180" cy="90" r="22" fill="none" stroke="#777" stroke-width="4" stroke-dasharray="30 18"><animateTransform attributeName="transform" type="rotate" from="0 180 90" to="360 180 90" dur="1s" repeatCount="indefinite"/></circle><text x="180" y="145" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#555">生图中…</text></svg>`;const m=await saveChatMessage(friendId,'received',`data:image/svg+xml,${encodeURIComponent(svg)}`,'',friend.id,'image');m.requestId=requestId;m.imageMode='generate';m.imageGenerationStatus='generating';m.imageDescription=action.image_prompt;await persist(friendId);refreshMessage(friendId,m,friend);return m;}
     async function replacePlaceholderMessage({friendId,friend,message,image}){message.content=image;message.imageGenerationStatus='completed';delete message.imageGenerationError;await persist(friendId);refreshMessage(friendId,message,friend);return message;}
     async function markPlaceholderFailed({friendId,friend,message,error}){const msg=esc(error.message);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="230"><rect width="100%" height="100%" rx="18" fill="#fff1f0"/><text x="24" y="55" font-family="sans-serif" font-size="19" fill="#b42318">生图失败</text><foreignObject x="24" y="75" width="332" height="95"><div xmlns="http://www.w3.org/1999/xhtml" style="font:14px sans-serif;line-height:1.5;color:#633">${msg}</div></foreignObject><text x="24" y="205" font-family="sans-serif" font-size="15" fill="#6c55a3">点击图片重试</text></svg>`;message.content=`data:image/svg+xml,${encodeURIComponent(svg)}`;message.imageGenerationStatus='failed';message.imageGenerationError=error.message;await persist(friendId);refreshMessage(friendId,message,friend);return message;}
-    async function handleImageAction({action,friend,friendId}){const settings=await getSettings();if(!settings.enabled||!settings.apiUrl||!settings.modelName||(settings.authType!=='none'&&!settings.apiKey)){await sendPromptOnlyImageMessage({action,friend,friendId});showToast('生图服务未配置，已显示图片描述');return;}const requestId=uid();if(activeRequests.has(requestId))return;const message=await createPlaceholderMessage({friendId,friend,action,requestId});activeRequests.set(requestId,true);const prompt=buildCharacterImagePrompt(friend,action.image_prompt);generateImage(prompt,settings).then(image=>replacePlaceholderMessage({friendId,friend,message,image})).catch(error=>markPlaceholderFailed({friendId,friend,message,error})).finally(()=>activeRequests.delete(requestId));}
-    async function retryImageMessage(friendId,messageId){const message=(chatHistories[friendId]||[]).find(m=>m.id===messageId),friend=friends.find(f=>f.id===friendId);if(!message||!friend||message.imageGenerationStatus!=='failed'||activeRequests.has(message.requestId))return;activeRequests.set(message.requestId,true);message.imageGenerationStatus='generating';await persist(friendId);refreshMessage(friendId,message,friend);generateImage(buildCharacterImagePrompt(friend,message.imageDescription)).then(image=>replacePlaceholderMessage({friendId,friend,message,image})).catch(error=>markPlaceholderFailed({friendId,friend,message,error})).finally(()=>activeRequests.delete(message.requestId));}
+ async function handleImageAction({action,friend,friendId}){
+    const settings=await getSettings();
+    if(!settings.enabled||!settings.apiUrl||!settings.modelName||(settings.authType!=='none'&&!settings.apiKey)){
+        await sendPromptOnlyImageMessage({action,friend,friendId});
+        showToast('生图服务未配置，已显示图片描述');
+        return;
+    }
+    const requestId=uid();
+    if(activeRequests.has(requestId))return;
+    const message=await createPlaceholderMessage({friendId,friend,action,requestId});
+    activeRequests.set(requestId,true);
+    const prompt=buildCharacterImagePrompt(friend,action.image_prompt);
+    try{
+        console.log('[JRSY Image API] handleImageAction character binding',{character:friend,characterId:friendId});
+        const image=await generateImage(prompt,settings,{character:friend,characterId:friendId});
+        await replacePlaceholderMessage({friendId,friend,message,image});
+    }catch(error){
+        await markPlaceholderFailed({friendId,friend,message,error});
+    }finally{
+        activeRequests.delete(requestId);
+    }
+ }
+    async function retryImageMessage(friendId,messageId){const message=(chatHistories[friendId]||[]).find(m=>m.id===messageId),friend=friends.find(f=>f.id===friendId);if(!message||!friend||message.imageGenerationStatus!=='failed'||activeRequests.has(message.requestId))return;activeRequests.set(message.requestId,true);message.imageGenerationStatus='generating';await persist(friendId);refreshMessage(friendId,message,friend);generateImage(buildCharacterImagePrompt(friend,message.imageDescription),null,{character:friend,characterId:friendId}).then(image=>replacePlaceholderMessage({friendId,friend,message,image})).catch(error=>markPlaceholderFailed({friendId,friend,message,error})).finally(()=>activeRequests.delete(message.requestId));}
     async function sendPromptOnlyImageMessage({action,friend,friendId,senderId=null}){const description=String(action?.image_prompt||action?.description||'').trim();if(!description)return null;const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="420" height="240"><rect width="100%" height="100%" rx="18" fill="#f3f0ff"/><text x="24" y="42" font-family="sans-serif" font-size="18" fill="#6c55a3">图片描述</text><foreignObject x="24" y="62" width="372" height="154"><div xmlns="http://www.w3.org/1999/xhtml" style="font:16px sans-serif;line-height:1.6;color:#383344">${esc(description)}</div></foreignObject></svg>`;const m=await saveChatMessage(friendId,'received',`data:image/svg+xml,${encodeURIComponent(svg)}`,'',senderId||friend?.id,'image');m.imageGenerationStatus='prompt-only';m.imageMode='prompt-only';m.imageDescription=description;await persist(friendId);if(currentChatFriendId===friendId)addMessageToDOM(m,friend);return m;}
     function handleImageClick(messageId){for(const [friendId,list] of Object.entries(chatHistories)){const m=list.find(x=>x.id===messageId);if(m?.imageGenerationStatus==='failed'){retryImageMessage(friendId,messageId);return true;}}return false;}
 
-    function formSettings(){const g=id=>document.getElementById(id);return normalizeSettings({enabled:g('imgApiEnabled').checked,apiUrl:g('imgApiUrl').value.trim(),apiKey:g('imgApiKey').value,endpoint:g('imgApiEndpoint').value.trim(),authType:g('imgApiAuth').value,customAuthHeader:g('imgApiCustomHeader').value.trim(),customAuthPrefix:g('imgApiCustomPrefix').value,modelName:g('imgApiModel').value.trim(),size:g('imgApiSize').value.trim(),quality:g('imgApiQuality').value.trim(),outputFormat:g('imgApiFormat').value.trim(),sendQuality:g('imgApiSendQuality').checked,sendOutputFormat:g('imgApiSendFormat').checked,sendN:true,timeout:Number(g('imgApiTimeout').value)*1000||180000,extraHeadersJson:g('imgApiExtraHeaders').value,extraBodyJson:g('imgApiExtraBody').value,presets:cachedSettings?.presets||[]});}
+    function formSettings(){const g=id=>document.getElementById(id);return normalizeSettings({enabled:g('imgApiEnabled').checked,apiUrl:g('imgApiUrl').value.trim(),apiKey:g('imgApiKey').value,endpoint:g('imgApiEndpoint').value.trim(),authType:g('imgApiAuth').value,customAuthHeader:g('imgApiCustomHeader').value.trim(),customAuthPrefix:g('imgApiCustomPrefix').value,modelName:g('imgApiModel').value.trim(),size:g('imgApiSize').value.trim(),quality:g('imgApiQuality').value.trim(),outputFormat:g('imgApiFormat').value.trim(),sendQuality:g('imgApiSendQuality').checked,sendOutputFormat:g('imgApiSendFormat').checked,sendN:true,timeout:Number(g('imgApiTimeout').value)*1000||120000,extraHeadersJson:g('imgApiExtraHeaders').value,extraBodyJson:g('imgApiExtraBody').value,presets:cachedSettings?.presets||[]});}
     function fillForm(s){for(const [id,key] of Object.entries({imgApiUrl:'apiUrl',imgApiKey:'apiKey',imgApiEndpoint:'endpoint',imgApiAuth:'authType',imgApiCustomHeader:'customAuthHeader',imgApiCustomPrefix:'customAuthPrefix',imgApiModel:'modelName',imgApiSize:'size',imgApiQuality:'quality',imgApiFormat:'outputFormat',imgApiExtraHeaders:'extraHeadersJson',imgApiExtraBody:'extraBodyJson'})){const el=document.getElementById(id);if(el)el.value=s[key]??'';}document.getElementById('imgApiEnabled').checked=s.enabled;document.getElementById('imgApiSendQuality').checked=s.sendQuality;document.getElementById('imgApiSendFormat').checked=s.sendOutputFormat;document.getElementById('imgApiTimeout').value=Math.round(s.timeout/1000);renderPresets(s);}
     async function openSettings(){setActivePage('imageApiSettingsScreen');fillForm(await getSettings());}
     async function saveForm(){await saveSettings(formSettings());showToast('生图 API 设置已保存');}

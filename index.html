@@ -33437,6 +33437,18 @@ customEmojis.forEach(e => {
 
                 // 恢复好友数据
                 friends = loadedFriends || [];
+                friends.forEach(friend => {
+                    if (!friend.visualMemory || typeof friend.visualMemory !== 'object') {
+                        friend.visualMemory = { id: '', referenceImages: [], imageCount: 0 };
+                    } else {
+                        if (typeof friend.visualMemory.id !== 'string') friend.visualMemory.id = '';
+                        if (!Array.isArray(friend.visualMemory.referenceImages)) friend.visualMemory.referenceImages = [];
+                        friend.visualMemory.imageCount = friend.visualMemory.referenceImages.length;
+                    }
+                });
+                if (window.CharacterVisualMemory) {
+                    await window.CharacterVisualMemory.hydrateCharacters(friends);
+                }
                                 // 【【【新增代码：为旧数据兼容时间戳】】】
                 friends.forEach(friend => {
                     if (!friend.lastMessageTimestamp) { // 如果这个好友没有时间戳
@@ -79101,6 +79113,9 @@ async function unbindLoverRelationship(event, friendId) {
 }
 
     </script>
+      <script src="character-visual-memory.js"></script>
+      <script src="image-viewer.js"></script>
+      <script src="image-generation-plugin.js"></script>
  <script src="https://unpkg.com/pinyin-pro"></script>
  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
@@ -79111,6 +79126,5 @@ async function unbindLoverRelationship(event, friendId) {
       <script src="notebook-plugin.js"></script>
       <script src="transmigrate-plugin.js"></script>
       <script src="draw-guess-plugin.js"></script>
-      <script src="image-generation-plugin.js"></script>
 </body>
 </html>
