@@ -74,7 +74,31 @@
     function parseJson(text,label){if(!String(text||'').trim())return{};try{return JSON.parse(text);}catch(_){throw new Error(`${label} JSON 格式错误`);}}
     function buildHeaders(s){const h={'Content-Type':'application/json',...parseJson(s.extraHeadersJson,'额外请求头')};if(s.authType==='bearer'&&s.apiKey)h.Authorization=`Bearer ${s.apiKey}`;else if(s.authType==='x-api-key'&&s.apiKey)h['x-api-key']=s.apiKey;else if(s.authType==='custom'){if(!s.customAuthHeader)throw new Error('请填写自定义认证 Header');h[s.customAuthHeader]=`${s.customAuthPrefix||''}${s.apiKey||''}`;}return h;}
     function buildBody(s,prompt,overrides={}){if(!s.modelName)throw new Error('请填写生图模型名称');const extra=parseJson(s.extraBodyJson,'额外请求体');const body={...extra,model:s.modelName,prompt,n:1,size:s.size,...overrides};body.prompt=prompt;body.n=1;if(!s.sendQuality)delete body.quality;else body.quality=overrides.quality||s.quality;if(!s.sendOutputFormat)delete body.output_format;else body.output_format=s.outputFormat;return body;}
-    function extractGeneratedImage(data){const candidates=[data?.data?.[0]?.b64_json,data?.data?.[0]?.base64,data?.data?.[0]?.url,data?.data?.[0]?.image,data?.image,data?.imageUrl,data?.image_url,data?.base64,data?.imageBase64,data?.image_base64,data?.b64_json,data?.output?.[0]?.url,data?.result?.url,data?.result?.image,data?.images?.[0]?.url,data?.images?.[0]];let value=candidates.find(v=>typeof v==='string'&&v.trim());if(!value&&typeof data==='string'){const md=data.match(/!\[[^\]]*\]\((https?:\/\/[^)]+)\)/i);const url=data.match(/https?:\/\/[^\s"'<>]+/i);value=md?.[1]||url?.[0]||(data.startsWith('data:image/')?data:null);}if(!value)throw new Error('接口返回中没有找到图片');if(value.startsWith('data:image/')||/^https?:\/\//i.test(value))return value;return `data:image/png;base64,${value}`;}
+    function extractGeneratedImage(data){
+        const candidates=[data?.data?.[0]?.b64_json,data?.data?.[0]?.base64,data?.data?.[0]?.url,data?.data?.[0]?.image,data?.image,data?.imageUrl,data?.image_url,data?.base64,data?.imageBase64,data?.image_base64,data?.b64_json,data?.output?.[0]?.url,data?.result?.url,data?.result?.image,data?.images?.[0]?.url,data?.images?.[0]];
+        let value=candidates.find(v=>typeof v==='string'&&v.trim());
+        if(!value&&typeof data==='string'){
+            const responseText=data.trim();
+            const md=responseText.match(/!\[[^\]]*\]\((https?:\/\/[^)]+)\)/i);
+            const url=responseText.match(/https?:\/\/[^\s"'<>]+/i);
+            value=md?.[1]||url?.[0]||(/^data:image\/[^;,]+;base64,/i.test(responseText)?responseText:null);
+        }
+        if(!value)throw new Error('接口返回中没有找到图片');
+        value=value.trim();
+        if(/^data:image\/[^;,]+;base64,/i.test(value)){
+            console.log('[JRSY Image Parse] detected base64');
+            console.log('[JRSY Image Parse] image ready');
+            return value;
+        }
+        if(/^https?:\/\//i.test(value)){
+            console.log('[JRSY Image Parse] image ready');
+            return value;
+        }
+        console.log('[JRSY Image Parse] detected base64');
+        const image=`data:image/png;base64,${value}`;
+        console.log('[JRSY Image Parse] image ready');
+        return image;
+    }
     function normalizeImageApiError(error){if(error?.name==='AbortError')return new Error('生图请求超时');const text=String(error?.message||error||'生图失败').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').slice(0,240);if(/Failed to fetch|NetworkError/i.test(text))return new Error('无法连接生图接口，请检查地址、网络或 CORS 设置');return new Error(text);}
     function inspectReferenceImages(referenceImages=[]){const items=referenceImages.map((value,index)=>{const match=String(value||'').match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/s);const mimeType=match?.[1]||'unknown';const payload=match?.[2]||'';const isBase64=/;base64,/i.test(String(value||'').slice(0,100));const padding=isBase64?(payload.match(/=*$/)?.[0].length||0):0;const bytes=isBase64?Math.max(0,Math.floor(payload.length*3/4)-padding):new TextEncoder().encode(payload).length;return{index,mimeType,bytes};});return{exists:items.length>0,count:items.length,mimeTypes:items.map(item=>item.mimeType),totalBytes:items.reduce((sum,item)=>sum+item.bytes,0),items};}
     async function generateImage(prompt,settingsOverride=null,options={}){
