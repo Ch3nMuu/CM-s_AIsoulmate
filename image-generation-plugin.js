@@ -41,7 +41,34 @@
         return {requested:Boolean(matched),confidence:matched?'high':'none',matchedRule:matched?matched.toString():(denied?'deny-pattern':null),normalizedText};
     }
     function createTurnContext(messages=[]){const latestUserText=messages.map(m=>typeof m==='string'?m:(m?.contentType==='text'?m.content||'':'')).filter(Boolean).join('\n');const photoRequest=detectExplicitPhotoRequest(latestUserText);const context={id:uid(),friendId:null,createdAt:new Date().toISOString(),latestUserText,photoRequest,realImageGenerationAllowed:photoRequest.requested,realImageGenerationConsumed:false};console.log('[JRSY Image Trigger] turn context',{latestUserText,requested:photoRequest.requested,matchedRule:photoRequest.matchedRule});return context;}
-    function sanitizeImageActions(actions,ctx){if(!Array.isArray(actions))return actions;return actions.reduce((out,source)=>{if(!source||typeof source!=='object')return out;const action={...source},type=String(action.type||'').toLowerCase();if(!IMAGE_TYPES.has(type)){out.push(action);return out;}const prompt=[action.image_prompt,action.prompt,action.description,action.imageDescription,action.scene,action.content].find(v=>typeof v==='string'&&v.trim());if(!prompt)return out;action.type='image';action.image_prompt=prompt.trim();const generate=ctx?.realImageGenerationAllowed===true&&ctx?.realImageGenerationConsumed!==true;if(generate){action.imageMode='generate';ctx.realImageGenerationConsumed=true;}else action.imageMode='prompt-only';console.log('[JRSY Image Trigger] image action',{imageMode:action.imageMode,allowed:ctx?.realImageGenerationAllowed===true,consumed:ctx?.realImageGenerationConsumed===true});out.push(action);return out;},[]);}
+    function sanitizeImageActions(actions,ctx){
+        if(!Array.isArray(actions))return actions;
+        const sanitized=actions.reduce((out,source)=>{
+            if(!source||typeof source!=='object')return out;
+            const action={...source},type=String(action.type||'').toLowerCase();
+            if(!IMAGE_TYPES.has(type)){out.push(action);return out;}
+            const prompt=[action.image_prompt,action.prompt,action.description,action.imageDescription,action.scene,action.content].find(v=>typeof v==='string'&&v.trim());
+            if(!prompt)return out;
+            action.type='image';
+            action.image_prompt=prompt.trim();
+            const generate=ctx?.realImageGenerationAllowed===true&&ctx?.realImageGenerationConsumed!==true;
+            if(generate){action.imageMode='generate';ctx.realImageGenerationConsumed=true;}
+            else action.imageMode='prompt-only';
+            console.log('[JRSY Image Trigger] image action',{imageMode:action.imageMode,allowed:ctx?.realImageGenerationAllowed===true,consumed:ctx?.realImageGenerationConsumed===true});
+            out.push(action);
+            return out;
+        },[]);
+        if(ctx?.realImageGenerationAllowed===true&&ctx?.realImageGenerationConsumed!==true){
+            const prompt=String(ctx.latestUserText||'').trim();
+            if(prompt){
+                const action={type:'image',imageMode:'generate',image_prompt:prompt};
+                ctx.realImageGenerationConsumed=true;
+                sanitized.push(action);
+                console.log('[JRSY Image Action Created]',{imageMode:action.imageMode,friendId:ctx.friendId,turnContextId:ctx.id});
+            }
+        }
+        return sanitized;
+    }
 
     function joinApiUrl(base,endpoint){const b=String(base||'').trim().replace(/\/+$/,'');let e=String(endpoint||'').trim();if(!b)throw new Error('请填写生图 API 地址');if(/^https?:\/\//i.test(e))return e;if(/\/v1$/i.test(b)&&/^\/v1(?:\/|$)/i.test(e))e=e.replace(/^\/v1/i,'');return b+(e.startsWith('/')?e:`/${e}`);}
     function parseJson(text,label){if(!String(text||'').trim())return{};try{return JSON.parse(text);}catch(_){throw new Error(`${label} JSON 格式错误`);}}
