@@ -98,7 +98,9 @@ const MultiOfflinePlugin = {
         const observer = new MutationObserver(() => {
             const menu = document.querySelector('#chatFunctions .function-menu');
             if (menu && !menu.querySelector('.btn-multi-offline')) {
-                const friend = friends.find(f => f.id === currentChatFriendId);
+                const friend = typeof friends !== 'undefined' && Array.isArray(friends)
+                    ? friends.find(f => f.id === currentChatFriendId)
+                    : null;
                 if (friend && friend.isGroup) {
                     const btn = document.createElement('div');
                     btn.className = 'function-item btn-multi-offline';
