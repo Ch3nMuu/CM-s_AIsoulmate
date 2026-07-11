@@ -4,12 +4,13 @@
     "name": "V",
     "visualFolder": "V_001",
     "referenceImages": [
-      "reference/V_body_01.jpg",
-      "reference/V_body_02.png",
-      "reference/V_body_03.jpg",
-      "reference/V_body_04.jpg",
-      "reference/V_face_01.png",
-      "reference/V_face_02.png"
+      "reference/V001_body_reference.png",
+      "reference/V001_face_expression.png",
+      "reference/V001_face_identity_front.png",
+      "reference/V001_face_multiview.png",
+      "reference/V001_style_black_suit.jpg",
+      "reference/V002_body_reference.jpg",
+      "reference/V002_face_multiview.png"
     ]
   },
   {

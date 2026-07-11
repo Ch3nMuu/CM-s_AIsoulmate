@@ -120,9 +120,10 @@
         });
     }
 
-    async function loadReferenceImages(character, limit = 6) {
+    async function loadReferenceImages(character, limit = null) {
         await hydrateCharacter(character);
-        const paths = (character?.visualMemory?.referenceImages || []).slice(0, Math.max(0, limit));
+        const allPaths = character?.visualMemory?.referenceImages || [];
+        const paths = Number.isFinite(limit) ? allPaths.slice(0, Math.max(0, limit)) : allPaths;
         const images = [];
         for (const path of paths) {
             try {
