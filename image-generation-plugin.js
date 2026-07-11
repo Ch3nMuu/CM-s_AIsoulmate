@@ -2,19 +2,27 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `使用参考图片中的同一个人物。
+    const REFERENCE_IDENTITY_PROMPT = `【最高优先级：人物身份锁定】
+必须生成参考图片中完全相同的同一个人物，而不是相似人物、替代人物或重新设计的人物。
 
-这是身份保持测试。
+参考图片是人物身份的唯一标准。必须严格保持：
+- 完全相同的脸型、头骨比例和面部轮廓
+- 完全相同的五官形状、尺寸、间距和位置
+- 完全相同的眼睛、眼型、瞳色和眼神特征
+- 完全相同的鼻子、嘴唇、眉毛、下颌线和耳朵
+- 完全相同的发型、发际线、发色、刘海和头发长度
+- 完全相同的年龄感、肤色和独特外貌标识
+- 完全相同的人物身份和可识别性
 
-必须保持：
-- 完全相同的脸型
-- 完全相同的眼睛
-- 完全相同的发型
-- 完全相同的人物身份
+禁止：
+- 创造新人物
+- 只生成“风格相似”或“长得像”的人物
+- 美化、重塑、混合或替换面部特征
+- 改变种族、年龄、性别表达或核心身份特征
+- 因场景、服装、姿势、光线或画风改变人物身份
 
-禁止创造新人物。
-
-如果无法保持身份，请不要重新设计人物。`;
+场景、服装、动作、构图和光线可以按照后续提示变化，但人物脸部与身份不得变化。
+如果无法保持完全相同的人物身份，不要重新设计人物。`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const activeRequests = new Map();
     let cachedSettings = null;
