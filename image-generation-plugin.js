@@ -2,12 +2,19 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `You are generating the exact person shown in the reference images.
-The reference images define the character's identity.
-Preserve the same facial structure, hairstyle, eye color, and unique appearance.
-Do not create a new person.
-Do not redesign the character.
-The generated image must be the same individual as the reference images.`;
+    const REFERENCE_IDENTITY_PROMPT = `使用参考图片中的同一个人物。
+
+这是身份保持测试。
+
+必须保持：
+- 完全相同的脸型
+- 完全相同的眼睛
+- 完全相同的发型
+- 完全相同的人物身份
+
+禁止创造新人物。
+
+如果无法保持身份，请不要重新设计人物。`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const activeRequests = new Map();
     let cachedSettings = null;
