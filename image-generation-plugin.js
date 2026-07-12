@@ -2,53 +2,69 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `【角色身份锁定 - 最高优先级】
+    const REFERENCE_IDENTITY_PROMPT = `【V001固定身份一致性约束 - 最高优先级】
 
-严格以参考图片中的人物作为唯一身份来源。
+参考图片中的人物是本次生成的唯一主体。
 
-参考图中的人物就是本次生成的同一个角色。
-禁止重新设计、替换、融合或生成相似人物。
+三张参考图均属于同一个固定角色 V001。
+
+请严格以参考图作为唯一外貌依据。
+
+禁止重新设计人物。
+禁止生成相似人物。
+禁止替换人物身份。
 
 必须保持：
 - 相同的人物身份
-- 相同的脸部结构
-- 相同的五官比例
+- 相同脸部结构
+- 相同五官比例
 - 相同的眼型、眉形、鼻型、嘴型
-- 相同的脸型轮廓
-- 相同的发型轮廓与发色
-- 相同的人物辨识度
+- 相同脸型轮廓
+- 相同发型轮廓
+- 相同人物辨识度
+- 相同性别
 
-禁止：
-- 改变人物性别
-- 改变脸型
-- 改变五官
-- 创建新人物
-- 生成“类似人物”
+三张参考图用途：
+
+第一张（V001_face_identity_front）：
+作为最高优先级身份基准。
+锁定脸部身份、五官结构、人物识别特征。
+
+第二张（V001_face_multiview）：
+补充不同角度下：
+- 脸部轮廓
+- 侧脸结构
+- 头部比例
+- 发型和后脑结构
+
+第三张（V001_body_reference）：
+补充：
+- 身体比例
+- 肩宽腰窄
+- 身材轮廓
+- 整体体态
 
 
-【角色设定补充】
+【V001角色设定补充】
 
 在不改变参考图人物身份的前提下：
 
-该角色为成年男性。
-
-设定：
+- 男性
 - 身高185cm
 - 年龄约28岁
 - 冷感精英型男性
 - 总裁气质
-- 克制、冷静、高阶掌控感
-- 具有明显压迫感
+- 高阶掌控型人物
 
 
-【外观细节】
+【外貌细节】
 
-保持参考图人物身份。
+保持参考图人物脸部不变。
 
-补充：
+补充角色设定：
 - 浅金色中长发
 - 后脑半束发型
-- 部分发丝自然垂落于后颈和两侧
+- 后颈和两侧自然垂落部分发丝
 - 金绿色眼瞳
 - 锐利眼神
 - 混血感气质
@@ -56,11 +72,11 @@
 
 【配饰】
 
-包括：
+角色通常佩戴：
 - 无框眼镜
-- 右耳银色金属耳骨夹（兼具未来通讯设备感）
+- 右耳银色金属耳骨夹（兼具未来通讯设备功能）
 - 左手小指素面银色尾戒
-- 可根据场景佩戴低调胸针
+- 偶尔佩戴低调胸针
 
 
 【身体特征】
@@ -68,34 +84,35 @@
 保持成年男性比例：
 
 - 肩宽腰窄
-- 修长身材
-- 长腿比例
+- 修长比例
+- 大长腿
 - 健壮但自然的肌肉线条
 
 
-【服装】
+【服装要求】
 
-允许改变服装，但人物身份不能改变。
+允许改变服装，但不得改变人物身份。
 
-偏好：
+服装偏好：
 - 深色或冷色系高级定制西装
 - 极简剪裁
-- 高级面料质感
+- 高级材质
 - 强调结构线条
 - 避免夸张装饰
 
 
-【特殊识别】
+【特殊识别特征】
 
 保留：
-- 左侧颈部旧伤疤痕
 
-作为角色身份特征。
+左侧颈部一道旧伤疤痕。
+
+该伤疤是角色的重要身份特征。
 
 
 【生成规则】
 
-生成该角色在不同场景中的自然照片。
+生成 V001 在不同场景中的自然照片。
 
 允许变化：
 - 场景
@@ -106,28 +123,36 @@
 
 禁止变化：
 - 人物身份
-- 脸部结构
-- 五官特征
+- 性别
+- 脸型
+- 五官
+- 核心外貌特征
 
 
 【视觉风格】
 
-Hyper-realistic digital human,
+Hyper-realistic 3D character rendering,
 cinematic CGI,
-next-generation game character rendering,
-ultra detailed realistic skin,
-realistic hair strands,
+next-generation game character,
+ultra-detailed digital human,
+realistic skin shader,
 subsurface scattering,
 physically based rendering,
-HDR lighting,
-cinematic color grading,
-professional photography,
-shallow depth of field,
+HDR global illumination,
+cinematic lighting,
+soft warm lighting,
+realistic hair strands,
+photorealistic,
 premium game promotional artwork,
-Unreal Engine 5 style,
+professional photography,
+cinematic color grading,
+shallow depth of field,
+clean background,
 Octane Render,
 Redshift Render,
+Unreal Engine 5,
 masterpiece,
+best quality,
 ultra detailed`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const TEST_REFERENCE_MODE = "face_only";
