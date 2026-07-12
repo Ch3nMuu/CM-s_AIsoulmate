@@ -2,45 +2,133 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `【V001固定身份一致性约束】
+    const REFERENCE_IDENTITY_PROMPT = `【角色身份锁定 - 最高优先级】
 
-参考图片中的人物是同一个固定角色 V001。
+严格以参考图片中的人物作为唯一身份来源。
 
-三张参考图具有不同作用：
-
-第一张（face_identity_front）：
-作为最高优先级身份基准，用于锁定脸部身份、五官结构和人物识别。
-
-第二张（face_multiview）：
-用于补充不同角度下的脸型、侧脸轮廓、头部比例、发型和后脑结构。
-
-第三张（body_reference）：
-用于补充身体比例、身材轮廓和整体体态。
-
-请生成同一个 V001 角色，而不是生成相似人物。
+参考图中的人物就是本次生成的同一个角色。
+禁止重新设计、替换、融合或生成相似人物。
 
 必须保持：
 - 相同的人物身份
 - 相同的脸部结构
-- 相同的眼睛、眉形、鼻子、嘴唇
-- 相同的发色、发型、长发长度
-- 相同的眼镜与特殊装饰
-- 相同的性别和年龄感
-- 相同的整体气质
+- 相同的五官比例
+- 相同的眼型、眉形、鼻型、嘴型
+- 相同的脸型轮廓
+- 相同的发型轮廓与发色
+- 相同的人物辨识度
 
 禁止：
-- 创建新人物
 - 改变人物性别
-- 根据场景重新设计脸
-- 只保留金发、眼镜等表面特征
-- 将参考图理解为风格参考
+- 改变脸型
+- 改变五官
+- 创建新人物
+- 生成“类似人物”
 
-允许改变：
+
+【角色设定补充】
+
+在不改变参考图人物身份的前提下：
+
+该角色为成年男性。
+
+设定：
+- 身高185cm
+- 年龄约28岁
+- 冷感精英型男性
+- 总裁气质
+- 克制、冷静、高阶掌控感
+- 具有明显压迫感
+
+
+【外观细节】
+
+保持参考图人物身份。
+
+补充：
+- 浅金色中长发
+- 后脑半束发型
+- 部分发丝自然垂落于后颈和两侧
+- 金绿色眼瞳
+- 锐利眼神
+- 混血感气质
+
+
+【配饰】
+
+包括：
+- 无框眼镜
+- 右耳银色金属耳骨夹（兼具未来通讯设备感）
+- 左手小指素面银色尾戒
+- 可根据场景佩戴低调胸针
+
+
+【身体特征】
+
+保持成年男性比例：
+
+- 肩宽腰窄
+- 修长身材
+- 长腿比例
+- 健壮但自然的肌肉线条
+
+
+【服装】
+
+允许改变服装，但人物身份不能改变。
+
+偏好：
+- 深色或冷色系高级定制西装
+- 极简剪裁
+- 高级面料质感
+- 强调结构线条
+- 避免夸张装饰
+
+
+【特殊识别】
+
+保留：
+- 左侧颈部旧伤疤痕
+
+作为角色身份特征。
+
+
+【生成规则】
+
+生成该角色在不同场景中的自然照片。
+
+允许变化：
 - 场景
-- 服装
 - 动作
 - 摄影角度
-- 光线`;
+- 光线
+- 服装
+
+禁止变化：
+- 人物身份
+- 脸部结构
+- 五官特征
+
+
+【视觉风格】
+
+Hyper-realistic digital human,
+cinematic CGI,
+next-generation game character rendering,
+ultra detailed realistic skin,
+realistic hair strands,
+subsurface scattering,
+physically based rendering,
+HDR lighting,
+cinematic color grading,
+professional photography,
+shallow depth of field,
+premium game promotional artwork,
+Unreal Engine 5 style,
+Octane Render,
+Redshift Render,
+masterpiece,
+ultra detailed`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const TEST_REFERENCE_MODE = "face_only";
     const activeRequests = new Map();
