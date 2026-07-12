@@ -3,15 +3,21 @@
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
     const REFERENCE_IDENTITY_PROMPT = `【角色外观一致性参考】
-参考图片用于保持角色视觉一致性。请生成同一角色在不同场景中的自然照片。
 
-请保持以下视觉特征连贯：
-- 面部轮廓和五官比例
-- 眼睛与眉眼特征
-- 发型和发色
-- 年龄感和整体气质
+参考图片中的人物是本次生成的主体。
+请生成同一角色在不同场景中的自然照片。
 
-场景、服装、动作和光线可以按照后续提示自然变化。`;
+请保持人物外观稳定一致：
+- 相同的人物性别
+- 相同的脸部身份特征
+- 相同的面部轮廓和五官比例
+- 相同的眼睛、眉眼、鼻子、嘴唇特征
+- 相同的发型和发色
+- 相同年龄感和整体气质
+
+不要生成新的角色，不要改变人物身份。
+
+场景、服装、动作、摄影角度和光线可以根据后续提示自然变化。`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const TEST_REFERENCE_MODE = "face_only";
     const activeRequests = new Map();
