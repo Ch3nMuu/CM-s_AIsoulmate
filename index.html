@@ -36642,9 +36642,8 @@ async function requestAIResponse() {
     for (let i = history.length - 1; i >= 0; i--) {
         const message = history[i];
         if (message.type === 'sent') {
-            userTurnMessages.unshift(message);
-        } else {
-            break; 
+            userTurnMessages.push(message);
+            break;
         }
     }
 
@@ -36726,6 +36725,11 @@ async function requestAIResponse() {
     }
 
     // 调用核心接收函数，并把时间差提示传进去
+    console.log('[DEBUG USER TURN MESSAGES BEFORE IMAGE]', {
+        currentChatFriendId,
+        historyLength: history.length,
+        userTurnMessages
+    });
     const turnContext = window.JrsyImageGeneration
         ? window.JrsyImageGeneration.createTurnContext(userTurnMessages)
         : null;

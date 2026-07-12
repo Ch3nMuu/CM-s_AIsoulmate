@@ -2,28 +2,18 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `【最高优先级：人物身份锁定】
-必须生成参考图片中完全相同的同一个人物，而不是相似人物、替代人物或重新设计的人物。
+    const REFERENCE_IDENTITY_PROMPT = `【角色外观一致性参考】
+参考图片用于保持角色视觉一致性。请生成同一角色在不同场景中的自然照片。
 
-参考图片是人物身份的唯一标准。必须严格保持：
-- 完全相同的脸型、头骨比例和面部轮廓
-- 完全相同的五官形状、尺寸、间距和位置
-- 完全相同的眼睛、眼型、瞳色和眼神特征
-- 完全相同的鼻子、嘴唇、眉毛、下颌线和耳朵
-- 完全相同的发型、发际线、发色、刘海和头发长度
-- 完全相同的年龄感、肤色和独特外貌标识
-- 完全相同的人物身份和可识别性
+请保持以下视觉特征连贯：
+- 面部轮廓和五官比例
+- 眼睛与眉眼特征
+- 发型和发色
+- 年龄感和整体气质
 
-禁止：
-- 创造新人物
-- 只生成“风格相似”或“长得像”的人物
-- 美化、重塑、混合或替换面部特征
-- 改变种族、年龄、性别表达或核心身份特征
-- 因场景、服装、姿势、光线或画风改变人物身份
-
-场景、服装、动作、构图和光线可以按照后续提示变化，但人物脸部与身份不得变化。
-如果无法保持完全相同的人物身份，不要重新设计人物。`;
+场景、服装、动作和光线可以按照后续提示自然变化。`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
+    const TEST_REFERENCE_MODE = "face_only";
     const activeRequests = new Map();
     let cachedSettings = null;
 
@@ -34,14 +24,18 @@
     async function saveSettings(value){ cachedSettings={...normalizeSettings(value),id:'image-settings'}; await dbManager.set('apiSettings',cachedSettings); return cachedSettings; }
 
     function detectExplicitPhotoRequest(text=''){
+        console.log('[DEBUG DETECT INPUT]', text);
         const normalizedText=String(text||'').trim().toLowerCase().replace(/\s+/g,' ');
         const deny=[/描述.{0,8}(你|自己).{0,8}(样子|穿着|外貌)/,/如果.{0,8}(能|可以).{0,8}(看到|看见)你/,/我想你了|你在干嘛|你在哪|你今天穿什么/];
-        const allow=[/给我(?:看|看看|看一看).{0,12}你/,/(?:给我)?发(?:一|1)?张?.{0,8}(照片|图片|自拍|相片)/,/(?:拍|照)(?:一|1)?张?.{0,8}(照片|图片|自拍|相片)?(?:给我|发我|看看)?/,/^(?:来|发|拍)?(?:一|1)?张?自拍(?:照|照片)?(?:给我|发我|看看)?[吧呀啊。！!？?]*$/,/(?:给我|让我|想)看看你.{0,16}(样子|穿着|衣服|现在|在干嘛)?/,/(?:给我|让我).{0,8}(?:看|看看|看一看).{0,12}(?:照片|图片|自拍|相片)/,/show me (?:a |your )?(?:photo|picture|selfie)/,/send me (?:a |your )?(?:photo|picture|selfie)/,/take (?:a |your )?(?:photo|picture|selfie)/];
+        const allow=[/给我(?:看|看看|看一看).{0,12}你/,/(?:给我)?发(?:一|1)?张?.{0,8}(照片|图片|自拍|相片)/,/(?:拍|照)(?:一|1)?张?.{0,8}(照片|图片|自拍|相片)?(?:给我|发我|看看)?/,/^(?:来|发|拍)?(?:一|1)?张?自拍(?:照|照片)?(?:给我|发我|看看)?[吧呀啊。！!？?]*$/,/(?:给我|让我|想)看看你.{0,16}(样子|穿着|衣服|现在|在干嘛)?/,/(?:给我|让我).{0,8}(?:看|看看|看一看).{0,12}(?:照片|图片|自拍|相片)/,/(?:给我|帮我)?(?:生成|制作)(?:一|1)?张?.{0,16}(?:照片|图片|自拍|相片)/,/show me (?:a |your )?(?:photo|picture|selfie)/,/send me (?:a |your )?(?:photo|picture|selfie)/,/take (?:a |your )?(?:photo|picture|selfie)/];
         const matched=allow.find(p=>p.test(normalizedText)); const denied=!matched&&deny.some(p=>p.test(normalizedText));
-        return {requested:Boolean(matched),confidence:matched?'high':'none',matchedRule:matched?matched.toString():(denied?'deny-pattern':null),normalizedText};
+        const result={requested:Boolean(matched),confidence:matched?'high':'none',matchedRule:matched?matched.toString():(denied?'deny-pattern':null),normalizedText};
+        console.log('[DEBUG DETECT RESULT]', result);
+        return result;
     }
-    function createTurnContext(messages=[]){const latestUserText=messages.map(m=>typeof m==='string'?m:(m?.contentType==='text'?m.content||'':'')).filter(Boolean).join('\n');const photoRequest=detectExplicitPhotoRequest(latestUserText);const context={id:uid(),friendId:null,createdAt:new Date().toISOString(),latestUserText,photoRequest,realImageGenerationAllowed:photoRequest.requested,realImageGenerationConsumed:false};console.log('[JRSY Image Trigger] turn context',{latestUserText,requested:photoRequest.requested,matchedRule:photoRequest.matchedRule});return context;}
+    function createTurnContext(messages=[]){console.log('[DEBUG TURN CONTEXT INPUT]', messages);const latestUserText=messages.map(m=>typeof m==='string'?m:(m?.contentType==='text'?m.content||'':'')).filter(Boolean).join('\n');const photoRequest=detectExplicitPhotoRequest(latestUserText);console.log('[DEBUG PHOTO REQUEST]', {text:latestUserText,requested:photoRequest.requested,matchedRule:photoRequest.matchedRule});const context={id:uid(),friendId:null,createdAt:new Date().toISOString(),latestUserText,photoRequest,realImageGenerationAllowed:photoRequest.requested,realImageGenerationConsumed:false};console.log('[JRSY Image Trigger] turn context',{latestUserText,requested:photoRequest.requested,matchedRule:photoRequest.matchedRule});return context;}
     function sanitizeImageActions(actions,ctx){
+        console.log('[DEBUG SANITIZE INPUT]', actions);
         if(!Array.isArray(actions))return actions;
         const sanitized=actions.reduce((out,source)=>{
             if(!source||typeof source!=='object')return out;
@@ -67,6 +61,7 @@
                 console.log('[JRSY Image Action Created]',{imageMode:action.imageMode,friendId:ctx.friendId,turnContextId:ctx.id});
             }
         }
+        console.log('[DEBUG SANITIZE OUTPUT]', sanitized);
         return sanitized;
     }
 
@@ -101,6 +96,7 @@
     }
     function normalizeImageApiError(error){if(error?.name==='AbortError')return new Error('生图请求超时');const text=String(error?.message||error||'生图失败').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').slice(0,240);if(/Failed to fetch|NetworkError/i.test(text))return new Error('无法连接生图接口，请检查地址、网络或 CORS 设置');return new Error(text);}
     function inspectReferenceImages(referenceImages=[]){const items=referenceImages.map((value,index)=>{const match=String(value||'').match(/^data:([^;,]+)(?:;[^,]*)?,(.*)$/s);const mimeType=match?.[1]||'unknown';const payload=match?.[2]||'';const isBase64=/;base64,/i.test(String(value||'').slice(0,100));const padding=isBase64?(payload.match(/=*$/)?.[0].length||0):0;const bytes=isBase64?Math.max(0,Math.floor(payload.length*3/4)-padding):new TextEncoder().encode(payload).length;return{index,mimeType,bytes};});return{exists:items.length>0,count:items.length,mimeTypes:items.map(item=>item.mimeType),totalBytes:items.reduce((sum,item)=>sum+item.bytes,0),items};}
+    function normalizeReferenceEntries(values=[]){return(Array.isArray(values)?values:[]).map((value,index)=>typeof value==='string'?{key:`reference-${index+1}`,dataUrl:value}:{key:String(value?.key||`reference-${index+1}`),dataUrl:value?.dataUrl}).filter(item=>typeof item.dataUrl==='string'&&item.dataUrl);}
     async function generateImage(prompt,settingsOverride=null,options={}){
         const s=normalizeSettings(settingsOverride||await getSettings());
         if(!s.enabled)throw new Error('生图服务未启用');
@@ -110,15 +106,30 @@
 
         const url=joinApiUrl(s.apiUrl,s.endpoint);
         const body=buildBody(s,prompt);
-        const referenceImages=Array.isArray(options.referenceImages)
+        const loadedReferenceImages=Array.isArray(options.referenceImages)
             ? options.referenceImages
             : (options.character&&window.CharacterVisualMemory?.loadReferenceImages
                 ? await window.CharacterVisualMemory.loadReferenceImages(options.character)
                 : []);
+        const referenceEntries=normalizeReferenceEntries(loadedReferenceImages).filter(item=>TEST_REFERENCE_MODE!=="face_only"||/(?:face|identity|multiview)/i.test(item.key));
+        const referenceImages=referenceEntries.map(item=>item.dataUrl);
+        console.log('[REFERENCE FINAL]', {
+            count: referenceEntries.length,
+            keys: referenceEntries.map(x => x.key)
+        });
+        console.log('[REFERENCE SEND]', {
+            count: referenceImages.length,
+            sizes: referenceImages.map(x => x.length)
+        });
+        console.log('[DEBUG IMAGE REFERENCE ORDER]',{
+            referenceCount:referenceEntries.length,
+            references:referenceEntries.map((item,index)=>({order:index+1,key:item.key,size:item.dataUrl.length}))
+        });
         if(referenceImages.length){
             body.reference_images=referenceImages;
             body.prompt=`${REFERENCE_IDENTITY_PROMPT}\n\n${body.prompt}`;
         }
+        console.log('[API REFERENCE COUNT]', body.reference_images?.length);
         const timeoutMs=Math.max(120000,Number(s.timeout)||120000);
         const referenceDiagnostics=inspectReferenceImages(referenceImages);
         const controller=new AbortController();
@@ -141,14 +152,48 @@
         try{
             console.log('REAL IMAGE REQUEST DIAGNOSTICS',{url,model:body.model,bodyKeys:Object.keys(body),referenceImages:referenceDiagnostics});
             console.log("FINAL IMAGE PROMPT", body.prompt);
-            const res=await fetch(url,{method:'POST',headers:buildHeaders(s),body:JSON.stringify(body),signal:controller.signal});
-            const text=await res.text();
-            const responseHeaders=Object.fromEntries(res.headers?.entries?.()||[]);
+            console.log('[DEBUG IMAGE REFERENCE]', {
+                referenceCount: referenceImages?.length || 0,
+                hasReferenceField: !!body.reference_images,
+                referenceSizes: referenceImages?.map(x => x.length),
+                bodyKeys: Object.keys(body)
+            });
+            console.log('[VECTORENGINE FINAL BODY]', {
+                body: {
+                    ...body,
+                    reference_images: body.reference_images?.map(x => x.slice(0, 30))
+                },
+                hasReferenceImages: Array.isArray(body.reference_images),
+                referenceImageCount: body.reference_images?.length || 0,
+                referenceImagePreviews: body.reference_images?.map(x => x.slice(0, 30)) || [],
+                promptLength: String(body.prompt || '').length
+            });
+            console.log('[BEFORE FETCH REFERENCE CHECK]', {
+                hasBodyReferenceImages: !!body.reference_images,
+                referenceCount: body.reference_images?.length || 0,
+                referenceSizes: body.reference_images?.map(x => x.length) || [],
+                bodyKeys: Object.keys(body)
+            });
+            let res=await fetch(url,{method:'POST',headers:buildHeaders(s),body:JSON.stringify(body),signal:controller.signal});
+            let text=await res.text();
+            let responseHeaders=Object.fromEntries(res.headers?.entries?.()||[]);
             console.groupCollapsed('[JRSY Image API] response');
             console.log('status:',res.status);
             console.log('headers:',responseHeaders);
             console.log('response text:',text);
             console.groupEnd();
+            if(!res.ok&&referenceImages.length){
+                const fallbackBody=buildBody(s,prompt);
+                console.warn('[JRSY Image API] reference image request failed; retrying without reference_images',{status:res.status});
+                res=await fetch(url,{method:'POST',headers:buildHeaders(s),body:JSON.stringify(fallbackBody),signal:controller.signal});
+                text=await res.text();
+                responseHeaders=Object.fromEntries(res.headers?.entries?.()||[]);
+                console.groupCollapsed('[JRSY Image API] fallback response');
+                console.log('status:',res.status);
+                console.log('headers:',responseHeaders);
+                console.log('response text:',text);
+                console.groupEnd();
+            }
             if(!res.ok)throw new Error(`生图接口返回 ${res.status}: ${text.replace(/<[^>]*>/g,' ').slice(0,500)}`);
             let data;try{data=JSON.parse(text);}catch(_){data=text;}
             return extractGeneratedImage(data);
@@ -162,7 +207,7 @@
     async function persist(friendId){await dbManager.set('chatHistories',{friendId,messages:chatHistories[friendId]||[]});}
     function refreshMessage(friendId,message,friend){if(currentChatFriendId!==friendId)return;const old=document.querySelector(`.message[data-message-id="${message.id}"]`);if(old)old.remove();addMessageToDOM(message,friend);const box=document.getElementById('chatMessages');if(box)box.scrollTop=box.scrollHeight;}
     async function createPlaceholderMessage({friendId,friend,action,requestId}){const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="360" height="220"><rect width="100%" height="100%" rx="18" fill="#eee"/><circle cx="180" cy="90" r="22" fill="none" stroke="#777" stroke-width="4" stroke-dasharray="30 18"><animateTransform attributeName="transform" type="rotate" from="0 180 90" to="360 180 90" dur="1s" repeatCount="indefinite"/></circle><text x="180" y="145" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#555">生图中…</text></svg>`;const m=await saveChatMessage(friendId,'received',`data:image/svg+xml,${encodeURIComponent(svg)}`,'',friend.id,'image');m.requestId=requestId;m.imageMode='generate';m.imageGenerationStatus='generating';m.imageDescription=action.image_prompt;await persist(friendId);refreshMessage(friendId,m,friend);return m;}
-    async function replacePlaceholderMessage({friendId,friend,message,image}){message.content=image;message.imageGenerationStatus='completed';delete message.imageGenerationError;await persist(friendId);refreshMessage(friendId,message,friend);return message;}
+    async function replacePlaceholderMessage({friendId,friend,message,image}){message.content=image;message.contentType='image';message.imageGenerationStatus='completed';delete message.imageGenerationError;await persist(friendId);refreshMessage(friendId,message,friend);return message;}
     async function markPlaceholderFailed({friendId,friend,message,error}){const msg=esc(error.message);const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="380" height="230"><rect width="100%" height="100%" rx="18" fill="#fff1f0"/><text x="24" y="55" font-family="sans-serif" font-size="19" fill="#b42318">生图失败</text><foreignObject x="24" y="75" width="332" height="95"><div xmlns="http://www.w3.org/1999/xhtml" style="font:14px sans-serif;line-height:1.5;color:#633">${msg}</div></foreignObject><text x="24" y="205" font-family="sans-serif" font-size="15" fill="#6c55a3">点击图片重试</text></svg>`;message.content=`data:image/svg+xml,${encodeURIComponent(svg)}`;message.imageGenerationStatus='failed';message.imageGenerationError=error.message;await persist(friendId);refreshMessage(friendId,message,friend);return message;}
  async function handleImageAction({action,friend,friendId}){
     const settings=await getSettings();
@@ -197,7 +242,7 @@
     function modelListUrls(apiUrl){const base=String(apiUrl||'').trim().replace(/\/+$/,'');if(!base)return[];const urls=[`${base}/models`];if(/\/v1$/i.test(base))urls.push(`${base.replace(/\/v1$/i,'')}/models`);else urls.push(`${base}/v1/models`);return[...new Set(urls)];}
     async function fetchModels(){const s=formSettings(),urls=modelListUrls(s.apiUrl);if(!urls.length){showAlert('请先填写生图 API 地址；也可以直接手动输入模型名称。');return[];}let lastError=null;for(const url of urls){try{const res=await fetch(url,{headers:buildHeaders(s)});if(!res.ok)throw new Error(`HTTP ${res.status}`);const data=await res.json(),items=data.data||data.models||[];const ids=items.map(x=>typeof x==='string'?x:x?.id).filter(Boolean);if(!ids.length)throw new Error('返回中没有模型列表');document.getElementById('imgApiModelList').innerHTML=ids.map(id=>`<option value="${esc(id)}"></option>`).join('');showToast(`已拉取 ${ids.length} 个模型`);return ids;}catch(error){lastError=error;}}showAlert(`无法拉取模型列表（${lastError?.message||'接口不支持'}）。该功能不是必需的，请直接在“模型名称”中手动输入后继续使用。`);return[];}
     async function testConnection(){const result=document.getElementById('imgApiTestResult');try{if(!confirm('测试会真实生成一张图片，并可能消耗额度，是否继续？'))return null;if(result)result.innerHTML='<div style="padding:12px;color:#777">正在测试生图接口…</div>';const image=await generateImage('A realistic smartphone photo of one red apple on a plain table, no text.',formSettings());if(result)result.innerHTML=`<img src="${esc(image)}" style="max-width:160px;border-radius:12px">`;showToast('生图接口连接成功');return image;}catch(error){const normalized=normalizeImageApiError(error);if(result)result.innerHTML=`<div style="padding:12px;color:#b42318">${esc(normalized.message)}</div>`;showAlert(`生图接口测试失败：${normalized.message}`);return null;}}
-    async function diagnoseVectorEngineReferenceFields(friendId=currentChatFriendId){const settings=await getSettings();const friend=friends.find(item=>item.id===friendId);if(!friend)throw new Error('未找到当前聊天角色');if(!settings.apiKey&&settings.authType!=='none')throw new Error('当前生图 API Key 为空');const referenceImages=window.CharacterVisualMemory?await window.CharacterVisualMemory.loadReferenceImages(friend):[];if(!referenceImages.length)throw new Error('当前角色没有可用参考图');const endpoint='https://api.vectorengine.cn/v1/images/generations';const prompt='根据参考图生成同一个人物';const fields=['reference_images','images','input_images'];const results=[];console.log('[VectorEngine reference field diagnostic]',{characterId:friendId,referenceImages:inspectReferenceImages(referenceImages)});for(const field of fields){const body={model:'gpt-image-2',prompt,[field]:referenceImages};const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),120000);try{console.groupCollapsed(`[VectorEngine diagnostic] ${field}`);console.log('URL:',endpoint);console.log('body keys:',Object.keys(body));console.log('reference image count:',referenceImages.length);const response=await fetch(endpoint,{method:'POST',headers:buildHeaders(settings),body:JSON.stringify(body),signal:controller.signal});const text=await response.text();const headers=Object.fromEntries(response.headers?.entries?.()||[]);let parsed;try{parsed=JSON.parse(text);}catch(_){parsed=text;}let generated=false;try{generated=Boolean(extractGeneratedImage(parsed));}catch(_){}console.log('status:',response.status);console.log('headers:',headers);console.log('response text:',text);console.log('generated:',generated);console.groupEnd();results.push({field,status:response.status,headers,response:parsed,generated});}catch(error){console.error(`[VectorEngine diagnostic] ${field} failed:`,error);results.push({field,status:null,error:normalizeImageApiError(error).message,generated:false});}finally{clearTimeout(timer);}}console.table(results.map(({field,status,generated,error})=>({field,status,generated,error:error||''})));return results;}
+    async function diagnoseVectorEngineReferenceFields(friendId=currentChatFriendId){const settings=await getSettings();const friend=friends.find(item=>item.id===friendId);if(!friend)throw new Error('未找到当前聊天角色');if(!settings.apiKey&&settings.authType!=='none')throw new Error('当前生图 API Key 为空');const loadedReferenceImages=window.CharacterVisualMemory?await window.CharacterVisualMemory.loadReferenceImages(friend):[];const referenceImages=normalizeReferenceEntries(loadedReferenceImages).map(item=>item.dataUrl);if(!referenceImages.length)throw new Error('当前角色没有可用参考图');const endpoint='https://api.vectorengine.cn/v1/images/generations';const prompt='根据参考图生成同一个人物';const fields=['reference_images','images','input_images'];const results=[];console.log('[VectorEngine reference field diagnostic]',{characterId:friendId,referenceImages:inspectReferenceImages(referenceImages)});for(const field of fields){const body={model:'gpt-image-2',prompt,[field]:referenceImages};const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),120000);try{console.groupCollapsed(`[VectorEngine diagnostic] ${field}`);console.log('URL:',endpoint);console.log('body keys:',Object.keys(body));console.log('reference image count:',referenceImages.length);const response=await fetch(endpoint,{method:'POST',headers:buildHeaders(settings),body:JSON.stringify(body),signal:controller.signal});const text=await response.text();const headers=Object.fromEntries(response.headers?.entries?.()||[]);let parsed;try{parsed=JSON.parse(text);}catch(_){parsed=text;}let generated=false;try{generated=Boolean(extractGeneratedImage(parsed));}catch(_){}console.log('status:',response.status);console.log('headers:',headers);console.log('response text:',text);console.log('generated:',generated);console.groupEnd();results.push({field,status:response.status,headers,response:parsed,generated});}catch(error){console.error(`[VectorEngine diagnostic] ${field} failed:`,error);results.push({field,status:null,error:normalizeImageApiError(error).message,generated:false});}finally{clearTimeout(timer);}}console.table(results.map(({field,status,generated,error})=>({field,status,generated,error:error||''})));return results;}
     function renderPresets(s){const el=document.getElementById('imgApiPreset');el.innerHTML='<option value="">选择预设</option>'+s.presets.map(p=>`<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');}
     async function savePreset(){const s=formSettings(),name=prompt('预设名称');if(!name)return;const presets=(s.presets||[]).filter(p=>p.name!==name);presets.push({...s,name,presets:undefined});s.presets=presets;await saveSettings(s);renderPresets(s);showToast('生图预设已保存');}
     async function selectPreset(name){const s=await getSettings(),p=s.presets.find(x=>x.name===name);if(p)fillForm({...s,...p,presets:s.presets});}

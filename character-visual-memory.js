@@ -129,7 +129,10 @@
             try {
                 const response = await fetch(path, { cache: 'force-cache' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                images.push(await blobToDataUrl(await response.blob()));
+                const rawKey = String(path || '').split(/[\\/]/).pop() || String(path || '');
+                let key = rawKey;
+                try { key = decodeURIComponent(rawKey); } catch (_) {}
+                images.push({ key, dataUrl: await blobToDataUrl(await response.blob()) });
             } catch (error) {
                 console.warn('[CharacterVisualMemory] reference image skipped:', path, error.message);
             }
