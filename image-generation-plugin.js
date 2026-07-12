@@ -2,22 +2,33 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `【角色外观一致性参考】
+    const REFERENCE_IDENTITY_PROMPT = `【固定角色身份参考】
 
-参考图片中的人物是本次生成的主体。
-请生成同一角色在不同场景中的自然照片。
+参考图片中的人物就是本次生成中的唯一主体。
+必须生成同一个人物，而不是重新设计一个相似角色。
 
-请保持人物外观稳定一致：
-- 相同的人物性别
-- 相同的脸部身份特征
-- 相同的面部轮廓和五官比例
-- 相同的眼睛、眉眼、鼻子、嘴唇特征
-- 相同的发型和发色
-- 相同年龄感和整体气质
+身份优先级高于场景、服装和摄影风格。
 
-不要生成新的角色，不要改变人物身份。
+必须保持：
+- 完全相同的脸部身份
+- 完全相同的五官结构
+- 完全相同的眼睛、眉形、鼻子、嘴唇特征
+- 完全相同的发型、发色和长度
+- 完全相同的眼镜和特殊装饰
+- 完全相同的人物性别
 
-场景、服装、动作、摄影角度和光线可以根据后续提示自然变化。`;
+禁止：
+- 创建新的相似人物
+- 改变人物性别
+- 改变脸型
+- 欧美化或真人化重设计
+- 将参考图只作为风格参考
+
+允许改变：
+- 场景
+- 衣服
+- 姿势
+- 光线`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const TEST_REFERENCE_MODE = "face_only";
     const activeRequests = new Map();
@@ -119,8 +130,22 @@
                 : []);
         const referenceEntries=normalizeReferenceEntries(loadedReferenceImages).filter(item=>TEST_REFERENCE_MODE!=="face_only"||/(?:face|identity|multiview)/i.test(item.key));
         const referenceImages=referenceEntries.map(item=>item.dataUrl);
-        const testReferenceImages=referenceImages.slice(0,1);
+        const testReferenceImages=referenceEntries
+            .filter(item=>item.key.includes('V001_face_identity_front')||item.key.includes('V001_face_multiview'))
+            .map(item=>item.dataUrl||item.image||item.content)
+            .filter(Boolean);
+        console.log('[TEST FACE FRONT ONLY]', {
+            count: testReferenceImages.length
+        });
         console.log('[TEST SINGLE REFERENCE]',testReferenceImages.length);
+        console.log('[TEST ONLY FACE IDENTITY]', {
+            count: testReferenceImages.length,
+            keys: testReferenceImages.map((_, i) => i)
+        });
+        console.log('[TEST FACE ID + MULTIVIEW]', {
+            count: testReferenceImages.length,
+            references: testReferenceImages.map(item => item.slice(0, 50))
+        });
         console.log('[REFERENCE FINAL]', {
             count: referenceEntries.length,
             keys: referenceEntries.map(x => x.key)
