@@ -2,32 +2,44 @@
     'use strict';
 
     const DEFAULT_IMAGE_API_SETTINGS = Object.freeze({ enabled:false, apiUrl:'', apiKey:'', endpoint:'/v1/images/generations', authType:'bearer', customAuthHeader:'', customAuthPrefix:'', modelName:'', size:'1024x1536', quality:'medium', outputFormat:'jpeg', sendQuality:true, sendOutputFormat:false, sendN:true, timeout:120000, extraHeadersJson:'', extraBodyJson:'', responseType:'auto', presets:[] });
-    const REFERENCE_IDENTITY_PROMPT = `【固定角色身份参考】
+    const REFERENCE_IDENTITY_PROMPT = `【V001固定身份一致性约束】
 
-参考图片中的人物就是本次生成中的唯一主体。
-必须生成同一个人物，而不是重新设计一个相似角色。
+参考图片中的人物是同一个固定角色 V001。
 
-身份优先级高于场景、服装和摄影风格。
+三张参考图具有不同作用：
+
+第一张（face_identity_front）：
+作为最高优先级身份基准，用于锁定脸部身份、五官结构和人物识别。
+
+第二张（face_multiview）：
+用于补充不同角度下的脸型、侧脸轮廓、头部比例、发型和后脑结构。
+
+第三张（body_reference）：
+用于补充身体比例、身材轮廓和整体体态。
+
+请生成同一个 V001 角色，而不是生成相似人物。
 
 必须保持：
-- 完全相同的脸部身份
-- 完全相同的五官结构
-- 完全相同的眼睛、眉形、鼻子、嘴唇特征
-- 完全相同的发型、发色和长度
-- 完全相同的眼镜和特殊装饰
-- 完全相同的人物性别
+- 相同的人物身份
+- 相同的脸部结构
+- 相同的眼睛、眉形、鼻子、嘴唇
+- 相同的发色、发型、长发长度
+- 相同的眼镜与特殊装饰
+- 相同的性别和年龄感
+- 相同的整体气质
 
 禁止：
-- 创建新的相似人物
+- 创建新人物
 - 改变人物性别
-- 改变脸型
-- 欧美化或真人化重设计
-- 将参考图只作为风格参考
+- 根据场景重新设计脸
+- 只保留金发、眼镜等表面特征
+- 将参考图理解为风格参考
 
 允许改变：
 - 场景
-- 衣服
-- 姿势
+- 服装
+- 动作
+- 摄影角度
 - 光线`;
     const IMAGE_TYPES = new Set(['image','photo','picture','selfie','generate_image','send_image']);
     const TEST_REFERENCE_MODE = "face_only";
@@ -128,11 +140,16 @@
             : (options.character&&window.CharacterVisualMemory?.loadReferenceImages
                 ? await window.CharacterVisualMemory.loadReferenceImages(options.character)
                 : []);
-        const referenceEntries=normalizeReferenceEntries(loadedReferenceImages).filter(item=>TEST_REFERENCE_MODE!=="face_only"||/(?:face|identity|multiview)/i.test(item.key));
+        const referenceEntries=normalizeReferenceEntries(loadedReferenceImages).filter(item=>TEST_REFERENCE_MODE!=="face_only"||/(?:face|identity|multiview|V001_body_reference)/i.test(item.key));
         const referenceImages=referenceEntries.map(item=>item.dataUrl);
-        const testReferenceImages=referenceEntries
-            .filter(item=>item.key.includes('V001_face_identity_front')||item.key.includes('V001_face_multiview'))
-            .map(item=>item.dataUrl||item.image||item.content)
+        const referencePriority=[
+            'V001_face_identity_front',
+            'V001_face_multiview',
+            'V001_body_reference'
+        ];
+        const testReferenceImages=referencePriority
+            .map(name=>referenceEntries.find(item=>item.key.includes(name)))
+            .map(item=>item&&(item.dataUrl||item.image||item.content))
             .filter(Boolean);
         console.log('[TEST FACE FRONT ONLY]', {
             count: testReferenceImages.length
@@ -145,6 +162,10 @@
         console.log('[TEST FACE ID + MULTIVIEW]', {
             count: testReferenceImages.length,
             references: testReferenceImages.map(item => item.slice(0, 50))
+        });
+        console.log('[FINAL V001 REFERENCE ORDER]', {
+            count: testReferenceImages.length,
+            order: testReferenceImages.map(item => item)
         });
         console.log('[REFERENCE FINAL]', {
             count: referenceEntries.length,
