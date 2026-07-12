@@ -119,6 +119,8 @@
                 : []);
         const referenceEntries=normalizeReferenceEntries(loadedReferenceImages).filter(item=>TEST_REFERENCE_MODE!=="face_only"||/(?:face|identity|multiview)/i.test(item.key));
         const referenceImages=referenceEntries.map(item=>item.dataUrl);
+        const testReferenceImages=referenceImages.slice(0,1);
+        console.log('[TEST SINGLE REFERENCE]',testReferenceImages.length);
         console.log('[REFERENCE FINAL]', {
             count: referenceEntries.length,
             keys: referenceEntries.map(x => x.key)
@@ -132,7 +134,7 @@
             references:referenceEntries.map((item,index)=>({order:index+1,key:item.key,size:item.dataUrl.length}))
         });
         if(referenceImages.length){
-            body.reference_images=referenceImages;
+            body.reference_images=testReferenceImages;
             body.prompt=`${REFERENCE_IDENTITY_PROMPT}\n\n${body.prompt}`;
         }
         console.log('[API REFERENCE COUNT]', body.reference_images?.length);
